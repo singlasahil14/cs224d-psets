@@ -448,7 +448,7 @@ def hyperband_train_and_validate(max_epochs, hyperparams_config):
         start = time.time()
         ###
         train_loss, train_acc = model.run_epoch(session, model.X_train,
-                                                model.y_train)
+                                                model.y_train, verbose=False)
         print 'Training loss: {}'.format(train_loss)
         print 'Training acc: {}'.format(train_acc)
         print 'Total time: {}'.format(time.time() - start)
