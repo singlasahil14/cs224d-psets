@@ -1,8 +1,8 @@
 import numpy as np
 from q2_NER import get_hyperparams_config, hyperband_train_and_validate
 
-max_iter = 1 # maximum iterations/epochs per configuration
-eta = 2 # defines downsampling rate (default=2)
+max_iter = 27 # maximum iterations/epochs per configuration
+eta = 3 # defines downsampling rate (default=2)
 logeta = lambda x: np.log(x)/np.log(eta)
 s_max = int(logeta(max_iter))  # number of unique executions of Successive Halving (minus one)
 B = (s_max+1)*max_iter  # total number of iterations (without reuse) per execution of Succesive Halving (n,r)

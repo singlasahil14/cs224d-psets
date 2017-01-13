@@ -419,20 +419,31 @@ def test_NER():
       _, predictions = model.predict(session, model.X_test, model.y_test)
       save_predictions(predictions, "q2_test.predicted")
 
+hyperband_models = {}
+model_idx = 0
+hyperband_weights_dir = "hyperband_weights/"
 def hyperband_train_and_validate(max_epochs, hyperparams_config):
+  global model_idx
   config = hyperparams_config
   with tf.Graph().as_default():
     model = NERModel(config)
 
     init = tf.global_variables_initializer()
     saver = tf.train.Saver()
+    done_epochs = 0
 
     with tf.Session() as session:
+      print(config)
+      if(config in hyperband_models):
+        done_epochs, file_name = hyperband_models[config]
+        saver.restore(session, file_name)
+      else:
+        session.run(init)
+
       best_val_loss = float('inf')
       best_val_epoch = 0
 
-      session.run(init)
-      for epoch in xrange(max_epochs):
+      for epoch in xrange(done_epochs, max_epochs):
         print 'Epoch {}'.format(epoch)
         start = time.time()
         ###
@@ -443,18 +454,19 @@ def hyperband_train_and_validate(max_epochs, hyperparams_config):
         print 'Total time: {}'.format(time.time() - start)
       val_loss, predictions = model.predict(session, model.X_dev, model.y_dev)
       print 'Validation loss: {}'.format(val_loss)
-      if not os.path.exists("./weights"):
-        os.makedirs("./weights")
-        
-      saver.save(session, './weights/ner.weights')
+
+      if not os.path.exists("./" + hyperband_weights_dir):
+        os.makedirs("./" + hyperband_weights_dir)
+      file_name =  "./" + hyperband_weights_dir + str(model_idx) + ".weights"
+      saver.save(session, file_name)
+      model_idx = model_idx + 1
+      hyperband_models[config] = max_epochs, file_name
+
       return val_loss
 
 def get_hyperparams_config():
   config = Config()
-  config.hidden_size = np.power(2, np.random.randint(low=6, high=10))
   config.l2 = np.random.uniform(low=0, high=0.001)
-  config.lr = np.random.uniform(low=0, high=0.001)
-  print(config)
   return config
 if __name__ == "__main__":
   test_NER()
