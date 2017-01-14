@@ -28,6 +28,6 @@ for s in reversed(range(s_max+1)):
 
 target = open('losses_dict', 'w')
 for key, value in losses_dict.iteritems():
-    target.write(str(key)+': '+str(value))
+    target.write(str(key)+': ' + str(value) + '\n')
 target.close()
 

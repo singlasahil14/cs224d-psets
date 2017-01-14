@@ -341,6 +341,33 @@ class NERModel(LanguageModel):
       results.extend(predicted_indices)
     return np.mean(losses), results
 
+
+  def validate(self, session, X, y=None):
+    """Make predictions from the provided model."""
+    # If y is given, the loss is also calculated
+    # We deactivate dropout by setting it to 1
+    dp = 1
+    losses = []
+    results = []
+    if np.any(y):
+        data = data_iterator(X, y, batch_size=self.config.batch_size,
+                             label_size=self.config.label_size, shuffle=False)
+    else:
+        data = data_iterator(X, batch_size=self.config.batch_size,
+                             label_size=self.config.label_size, shuffle=False)
+    for step, (x, y) in enumerate(data):
+      feed = self.create_feed_dict(input_batch=x, dropout=dp)
+      if np.any(y):
+        feed[self.labels_placeholder] = y
+        loss, preds = session.run(
+            [self.cross_entropy_loss, self.predictions], feed_dict=feed)
+        losses.append(loss)
+      else:
+        preds = session.run(self.predictions, feed_dict=feed)
+      predicted_indices = preds.argmax(axis=1)
+      results.extend(predicted_indices)
+    return np.mean(losses), results
+
 def print_confusion(confusion, num_to_tag):
     """Helper method that prints confusion matrix."""
     # Summing top to bottom gets the total number of tags guessed as T
@@ -430,12 +457,16 @@ def hyperband_train_and_validate(max_epochs, hyperparams_config):
 
     init = tf.global_variables_initializer()
     saver = tf.train.Saver()
-    done_epochs = 0
+    start_epoch = 0
 
     with tf.Session() as session:
+      best_val_loss = float('inf')
+      best_val_epoch = 0
+
       print(config)
       if(config in hyperband_models):
         done_epochs, file_name = hyperband_models[config]
+        start_epoch = done_epochs + 1
         saver.restore(session, file_name)
       else:
         session.run(init)
@@ -443,24 +474,28 @@ def hyperband_train_and_validate(max_epochs, hyperparams_config):
       best_val_loss = float('inf')
       best_val_epoch = 0
 
-      for epoch in xrange(done_epochs, max_epochs):
+      for epoch in xrange(start_epoch, max_epochs):
         print 'Epoch {}'.format(epoch)
         start = time.time()
-        ###
         train_loss, train_acc = model.run_epoch(session, model.X_train,
                                                 model.y_train, verbose=False)
+        val_loss, predictions = model.validate(session, model.X_dev, model.y_dev)
+        if val_loss < best_val_loss:
+          best_val_loss = val_loss
+          best_val_epoch = epoch
         print 'Training loss: {}'.format(train_loss)
         print 'Training acc: {}'.format(train_acc)
+        print 'Validation loss: {}'.format(val_loss)
         print 'Total time: {}'.format(time.time() - start)
-      val_loss, predictions = model.predict(session, model.X_dev, model.y_dev)
-      print 'Validation loss: {}'.format(val_loss)
+      print 'Best Validation loss: {}'.format(best_val_loss)
+      print 'Best Validation epoch: {}'.format(best_val_epoch)
 
       if not os.path.exists("./" + hyperband_weights_dir):
         os.makedirs("./" + hyperband_weights_dir)
       file_name =  "./" + hyperband_weights_dir + str(model_idx) + ".weights"
       saver.save(session, file_name)
+      hyperband_models[config] = epoch, file_name
       model_idx = model_idx + 1
-      hyperband_models[config] = max_epochs, file_name
 
       return val_loss
 
