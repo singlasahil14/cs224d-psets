@@ -26,7 +26,7 @@ class Config(object):
   early_stopping = 2
   dropout = 0.9
   lr = 0.001
-  l2 = 0.001
+  l2 = 0.0001
   window_size = 3
 
   def __str__(self):
@@ -135,10 +135,13 @@ class NERModel(LanguageModel):
       feed_dict: The feed dictionary mapping from placeholders to values.
     """
     ### YOUR CODE HERE
-    if(label_batch is None):
-      feed_dict = {self.input_placeholder: input_batch, self.dropout_placeholder: dropout}
+    feed_dict = {self.input_placeholder: input_batch}
+    if(label_batch is not None):
+      feed_dict[self.labels_placeholder] = label_batch
+    if(dropout is not None):
+      feed_dict[self.dropout_placeholder] = dropout
     else:
-      feed_dict = {self.input_placeholder: input_batch, self.dropout_placeholder: dropout, self.labels_placeholder: label_batch}
+      feed_dict[self.dropout_placeholder] = 1
     ### END YOUR CODE
     return feed_dict
 
@@ -172,7 +175,8 @@ class NERModel(LanguageModel):
 
     with tf.device('/cpu:0'):
       ### YOUR CODE HERE
-      self.embeddings = tf.Variable(tf.random_uniform([len(self.wv), embed_size], -1.0, 1.0), dtype=tf.float32, name='embeddings')
+      self.embeddings = tf.get_variable('Embedding', [len(self.wv), embed_size], 
+                                        initializer=xavier_weight_init())
       window = tf.nn.embedding_lookup(self.embeddings, self.input_placeholder)
       window = tf.reshape(window, [-1, window_size*embed_size], name='window')
       ### END YOUR CODE
@@ -223,6 +227,8 @@ class NERModel(LanguageModel):
       self.b2 = tf.get_variable(name='biases', shape=[label_size],
                                initializer=tf.constant_initializer(0.0))
       output = tf.matmul(hidden, self.U) + self.b2
+
+    output = tf.nn.dropout(output, self.dropout_placeholder)
     tf.add_to_collection("total_loss", self.config.l2*(tf.nn.l2_loss(self.W) + tf.nn.l2_loss(self.U)))
     ### END YOUR CODE
     return output 
@@ -340,7 +346,6 @@ class NERModel(LanguageModel):
       predicted_indices = preds.argmax(axis=1)
       results.extend(predicted_indices)
     return np.mean(losses), results
-
 
   def validate(self, session, X, y=None):
     """Make predictions from the provided model."""

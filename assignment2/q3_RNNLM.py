@@ -106,9 +106,12 @@ class RNNLM_Model(LanguageModel):
     embed_size = self.config.embed_size
     with tf.device('/cpu:0'):
       ### YOUR CODE HERE
-      self.embeddings = tf.Variable(tf.random_uniform([len(self.vocab), embed_size], -1.0, 1.0), dtype=tf.float32, name='embeddings')
-      inputs_tensor = tf.nn.embedding_lookup(self.embeddings, self.input_placeholder)
-      inputs = tf.unstack(inputs_tensor, axis=1)
+      self.embeddings = tf.get_variable(name='embeddings',
+                                        shape=[len(self.vocab), embed_size], 
+                                        trainable=True,
+                                        dtype=tf.float32)
+      inputs = tf.nn.embedding_lookup(self.embeddings, self.input_placeholder)
+      inputs = tf.unstack(inputs, axis=1)
       ### END YOUR CODE
       return inputs
 
@@ -135,8 +138,7 @@ class RNNLM_Model(LanguageModel):
     num_steps = self.config.num_steps
     hidden_size = self.config.hidden_size
     with tf.variable_scope('projection') as scope:
-      self.U = tf.get_variable(name='H', shape=[hidden_size, len(self.vocab)],
-                               initializer=xavier_weight_init())
+      self.U = tf.get_variable(name='H', shape=[hidden_size, len(self.vocab)])
       self.b_2 = tf.get_variable(name='biases', shape=[len(self.vocab)],
                                 initializer=tf.constant_initializer(0.0))
 
@@ -161,7 +163,9 @@ class RNNLM_Model(LanguageModel):
     batch_size = self.config.batch_size
     targets = tf.reshape(self.labels_placeholder, [-1])
     weights = tf.ones([batch_size * num_steps], dtype=tf.float32)
-    loss = sequence_loss([output], [targets], [weights], self.vocab)
+    cross_entropy = sequence_loss([output], [targets], [weights], len(self.vocab))
+    tf.add_to_collection('total_loss', cross_entropy)
+    loss = tf.add_n(tf.get_collection('total_loss'))
     ### END YOUR CODE
     return loss
 
@@ -254,24 +258,28 @@ class RNNLM_Model(LanguageModel):
     hidden_size = self.config.hidden_size
     num_steps = self.config.num_steps
 
+    with tf.variable_scope('InputDropout'):
+      inputs = [tf.nn.dropout(x, self.dropout_placeholder) for x in inputs]
+
+    self.initial_state = tf.zeros([batch_size, hidden_size])
     rnn_outputs = []
     with tf.variable_scope('RNN') as scope:
-      self.initial_state = tf.zeros([batch_size, hidden_size])
-      self.H = tf.get_variable(name='H', shape=[hidden_size, hidden_size],
-                               initializer=xavier_weight_init())
-      self.I = tf.get_variable(name='I', shape=[embed_size, hidden_size],
-                                initializer=xavier_weight_init())
-      self.b_1 = tf.get_variable(name='biases', shape=[hidden_size],
-                                initializer=tf.constant_initializer(0.0))
+      self.H = tf.get_variable(name='H', shape=[hidden_size, hidden_size])
+      self.I = tf.get_variable(name='I', shape=[embed_size, hidden_size])
+      self.b_1 = tf.get_variable(name='biases', shape=[hidden_size])
 
-      hidden_state = tf.sigmoid(tf.matmul(self.initial_state, self.H) + tf.matmul(inputs[0], self.I) + self.b_1)
+      hidden_state = tf.nn.sigmoid(tf.matmul(self.initial_state, self.H) + tf.matmul(inputs[0], self.I) + self.b_1)
       rnn_outputs.append(hidden_state)
 
       for i in range(1,num_steps):
         scope.reuse_variables()
-        hidden_state = tf.sigmoid(tf.matmul(hidden_state, self.H) + tf.matmul(inputs[i], self.I) + self.b_1)
+        hidden_state = tf.nn.sigmoid(tf.matmul(hidden_state, self.H) + tf.matmul(inputs[i], self.I) + self.b_1)
         rnn_outputs.append(hidden_state)
-      self.final_state = hidden_state
+    self.final_state = hidden_state
+
+    with tf.variable_scope('OutputDropout'):
+      rnn_outputs = [tf.nn.dropout(x, self.dropout_placeholder) for x in rnn_outputs]
+
     ### END YOUR CODE
     return rnn_outputs
 
@@ -328,7 +336,11 @@ def generate_text(session, model, config, starting_text='<eos>',
   tokens = [model.vocab.encode(word) for word in starting_text.split()]
   for i in xrange(stop_length):
     ### YOUR CODE HERE
-    raise NotImplementedError
+    feed = {model.input_placeholder: [tokens[-1:]], 
+            model.initial_state: state,
+            model.dropout_placeholder: 1}
+    state, y_pred = session.run(
+          [model.final_state, model.predictions[-1]], feed_dict=feed)
     ### END YOUR CODE
     next_word_idx = sample(y_pred[0], temperature=temp)
     tokens.append(next_word_idx)
@@ -379,7 +391,7 @@ def test_RNNLM():
         break
       print 'Total time: {}'.format(time.time() - start)
       
-    saver.restore(session, 'ptb_rnnlm.weights')
+    saver.restore(session, './ptb_rnnlm.weights')
     test_pp = model.run_epoch(session, model.encoded_test)
     print '=-=' * 5
     print 'Test perplexity: {}'.format(test_pp)
