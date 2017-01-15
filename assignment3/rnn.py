@@ -71,10 +71,9 @@ class RNN_Model():
             ### YOUR CODE HERE
             vocab_size = len(self.vocab)
             embed_size = self.config.embed_size
-            embeddings = tf.get_variable(name='embeddings', shape=[vocab_size, embed_size], dtype=tf.float32)
+            embeddings = tf.get_variable(name='embeddings', shape=[vocab_size, embed_size], dtype=tf.float32, trainable=True)
             W1 = tf.get_variable(name='W1', shape=[2*embed_size, embed_size], dtype=tf.float32)
             b1 = tf.get_variable(name='b1', shape=[embed_size], dtype=tf.float32)
-            tf.add_to_collection("total_loss", self.config.l2 * tf.nn.l2_loss(W1))
             ### END YOUR CODE
         with tf.variable_scope('Projection'):
             ### YOUR CODE HERE
@@ -82,7 +81,6 @@ class RNN_Model():
             label_size = self.config.label_size
             U = tf.get_variable(name='U', shape=[embed_size, label_size], dtype=tf.float32)
             bs = tf.get_variable(name='bs', shape=[label_size], dtype=tf.float32)
-            tf.add_to_collection("total_loss", self.config.l2 * tf.nn.l2_loss(U))
             ### END YOUR CODE
 
     def add_model(self, node):
@@ -137,9 +135,6 @@ class RNN_Model():
         with tf.variable_scope('Projection', reuse=True):
             U = tf.get_variable(name='U')
             bs = tf.get_variable(name='bs')
-            print(node_tensors)
-            print(U)
-            print(bs)
             logits = tf.matmul(node_tensors, U) + bs
         ### END YOUR CODE
         return logits
@@ -157,9 +152,13 @@ class RNN_Model():
         """
         loss = None
         # YOUR CODE HERE
-        cross_entropy_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits, labels))
-        tf.add_to_collection("total_loss", cross_entropy_loss)
-        loss = tf.add_n(tf.get_collection('total_loss'))
+        cross_entropy_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits, labels))
+        with tf.variable_scope('Projection', reuse=True):
+            U = tf.get_variable(name='U')
+        with tf.variable_scope('Composition', reuse=True):
+            W1 = tf.get_variable(name='W1')
+        l2_loss = self.config.l2 * (tf.nn.l2_loss(W1) + tf.nn.l2_loss(U))
+        loss = cross_entropy_loss + l2_loss
         # END YOUR CODE
         return loss
 
