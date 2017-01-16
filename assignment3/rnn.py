@@ -1,5 +1,6 @@
 import sys
 import os
+import glob
 import numpy as np
 import matplotlib.pyplot as plt
 import math
@@ -69,18 +70,18 @@ class RNN_Model():
         '''
         with tf.variable_scope('Composition'):
             ### YOUR CODE HERE
-            vocab_size = len(self.vocab)
+            vocab_size = self.vocab.total_words
             embed_size = self.config.embed_size
-            embeddings = tf.get_variable(name='embeddings', shape=[vocab_size, embed_size], dtype=tf.float32, trainable=True)
-            W1 = tf.get_variable(name='W1', shape=[2*embed_size, embed_size], dtype=tf.float32)
-            b1 = tf.get_variable(name='b1', shape=[embed_size], dtype=tf.float32)
+            embeddings = tf.get_variable(name='embeddings', shape=[vocab_size, embed_size])
+            W1 = tf.get_variable(name='W1', shape=[2*embed_size, embed_size])
+            b1 = tf.get_variable(name='b1', shape=[1, embed_size])
             ### END YOUR CODE
         with tf.variable_scope('Projection'):
             ### YOUR CODE HERE
             embed_size = self.config.embed_size
             label_size = self.config.label_size
-            U = tf.get_variable(name='U', shape=[embed_size, label_size], dtype=tf.float32)
-            bs = tf.get_variable(name='bs', shape=[label_size], dtype=tf.float32)
+            U = tf.get_variable(name='U', shape=[embed_size, label_size])
+            bs = tf.get_variable(name='bs', shape=[1, label_size])
             ### END YOUR CODE
 
     def add_model(self, node):
@@ -109,7 +110,8 @@ class RNN_Model():
         curr_node_tensor = None
         if node.isLeaf:
             ### YOUR CODE HERE
-            curr_node_tensor = tf.expand_dims(tf.gather(embeddings, self.vocab.encode(node.word)),0)
+            word_id = self.vocab.encode(node.word)
+            curr_node_tensor = tf.expand_dims(tf.gather(embeddings, word_id),0)
             ### END YOUR CODE
         else:
             node_tensors.update(self.add_model(node.left))
@@ -153,6 +155,7 @@ class RNN_Model():
         loss = None
         # YOUR CODE HERE
         cross_entropy_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits, labels))
+
         with tf.variable_scope('Projection', reuse=True):
             U = tf.get_variable(name='U')
         with tf.variable_scope('Composition', reuse=True):
@@ -198,7 +201,7 @@ class RNN_Model():
         """
         predictions = None
         # YOUR CODE HERE
-        predictions = np.argmax(y, axis=1)
+        predictions = tf.argmax(y, 1)
         # END YOUR CODE
         return predictions
 
@@ -298,7 +301,11 @@ class RNN_Model():
 
             #save if model has improved on val
             if val_loss < best_val_loss:
-                 shutil.copyfile('./weights/%s.temp'%self.config.model_name, './weights/%s'%self.config.model_name)
+                 for src_file in glob.glob('./weights/%s.temp*'%self.config.model_name):
+                        dst_file = '.'.join(src_file.split('.')[:5] + src_file.split('.')[6:])
+                        print(dst_file)
+			shutil.copyfile(src_file, dst_file)
+                 #shutil.copyfile("./weights/%s.temp"%self.config.model_name, "./weights/%s"%self.config.model_name)
                  best_val_loss = val_loss
                  best_val_epoch = epoch
 
